@@ -1,0 +1,23 @@
+# Lokale Entwicklung – kein Traefik, kein TLS, Auth deaktiviert.
+#
+# Usage:
+#   cp .env.example .env   # WP_URL, WP_USERNAME, WP_APP_PASSWORD setzen
+#   docker compose -f docker-compose.local.yml up
+#
+# Claude Desktop verbinden:
+#   {"mcpServers": {"wordpress-local": {"url": "http://localhost:8001/sse"}}}
+services:
+  wordpress-mcp:
+    image: ghcr.io/mbay-odw/wordpress-mcp:latest
+    container_name: wordpress-mcp-local
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      - MCP_TRANSPORT=sse
+      - PORT=8000
+      - WP_URL=${WP_URL}
+      - WP_USERNAME=${WP_USERNAME}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      # Auth absichtlich nicht gesetzt → jede Anfrage wird durchgelassen
+    ports:
+      - "127.0.0.1:8001:8000"
