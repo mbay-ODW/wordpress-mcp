@@ -625,6 +625,8 @@ def _run_sse() -> None:
     oidc_introspection_url = os.getenv("OIDC_INTROSPECTION_URL", "")
     oidc_client_id = os.getenv("OIDC_CLIENT_ID", "")
     oidc_client_secret = os.getenv("OIDC_CLIENT_SECRET", "")
+    oauth_issuer = os.getenv("OAUTH_ISSUER", "")
+    mcp_server_url = os.getenv("MCP_SERVER_URL", "")
 
     async def _is_authorized(request: Request) -> tuple[bool, str | None]:
         logging.debug("Auth-Check: %s %s", request.method, request.url.path)
@@ -668,6 +670,32 @@ def _run_sse() -> None:
             return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": www})
         return Response("Unauthorized", status_code=401)
 
+    # OAuth Discovery Endpoints – benötigt von Claude.ai beim Verbinden
+    async def handle_oauth_protected_resource(request: Request):
+        """RFC 9728 – Protected Resource Metadata."""
+        from starlette.responses import JSONResponse
+        return JSONResponse({
+            "resource": mcp_server_url,
+            "authorization_servers": [oauth_issuer],
+            "bearer_methods_supported": ["header"],
+        })
+
+    async def handle_oauth_authorization_server(request: Request):
+        """RFC 8414 – Authorization Server Metadata (proxy zu Authelia)."""
+        from starlette.responses import JSONResponse
+        return JSONResponse({
+            "issuer": oauth_issuer,
+            "authorization_endpoint": f"{oauth_issuer}/api/oidc/authorization",
+            "token_endpoint": f"{oauth_issuer}/api/oidc/token",
+            "jwks_uri": f"{oauth_issuer}/jwks.json",
+            "scopes_supported": ["openid", "profile", "email", "offline_access"],
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code", "refresh_token"],
+            "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+            "introspection_endpoint": f"{oauth_issuer}/api/oidc/introspection",
+            "revocation_endpoint": f"{oauth_issuer}/api/oidc/revocation",
+        })
+
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request: Request):
@@ -703,8 +731,13 @@ def _run_sse() -> None:
 
     app = Starlette(
         routes=[
+            # OAuth Discovery (kein Auth erforderlich)
+            Route("/.well-known/oauth-protected-resource", endpoint=handle_oauth_protected_resource, methods=["GET"]),
+            Route("/.well-known/oauth-authorization-server", endpoint=handle_oauth_authorization_server, methods=["GET"]),
+            # Streamable HTTP (aktueller MCP-Spec) – Claude.ai nutzt POST
             Route("/sse", endpoint=handle_streamable_http, methods=["POST"]),
             Route("/mcp", endpoint=handle_streamable_http, methods=["POST"]),
+            # Classic SSE (Claude Desktop / ältere Clients)
             Route("/sse", endpoint=handle_sse, methods=["GET"]),
             Mount("/messages/", app=sse.handle_post_message),
         ],
