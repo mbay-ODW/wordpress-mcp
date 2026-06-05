@@ -1,0 +1,46 @@
+services:
+  wordpress-geb-mcp:
+    image: ghcr.io/mbay-odw/wordpress-mcp:latest
+    container_name: wordpress-geb-mcp
+    restart: unless-stopped
+    environment:
+      - WP_URL=https://www.energieberatung-odenwaldkreis.de
+      - WP_USERNAME=murat.bayram@energieberatung-odenwaldkreis.de
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      - MCP_TRANSPORT=sse
+      - PORT=8000
+      - MCP_API_KEY=${MCP_API_KEY}
+      - OIDC_INTROSPECTION_URL=${OIDC_INTROSPECTION_URL:-https://authelia.${DOMAIN}/api/oidc/introspection}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-wordpress-geb-mcp}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    expose:
+      - "8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.wordpress-geb-mcp-sse.rule=Host(`wordpress-geb-mcp.${DOMAIN}`) && PathPrefix(`/sse`)"
+      - "traefik.http.routers.wordpress-geb-mcp-sse.entrypoints=websecure"
+      - "traefik.http.routers.wordpress-geb-mcp-sse.service=wordpress-geb-mcp-svc"
+      - "traefik.http.routers.wordpress-geb-mcp-sse.tls=true"
+      - "traefik.http.routers.wordpress-geb-mcp-sse.tls.certresolver=mydnschallenge"
+      - "traefik.http.routers.wordpress-geb-mcp-sse.middlewares=middlewares-rate-limit@file,middlewares-secure-headers@file"
+      - "traefik.http.routers.wordpress-geb-mcp-msg.rule=Host(`wordpress-geb-mcp.${DOMAIN}`) && PathPrefix(`/messages`)"
+      - "traefik.http.routers.wordpress-geb-mcp-msg.entrypoints=websecure"
+      - "traefik.http.routers.wordpress-geb-mcp-msg.service=wordpress-geb-mcp-svc"
+      - "traefik.http.routers.wordpress-geb-mcp-msg.tls=true"
+      - "traefik.http.routers.wordpress-geb-mcp-msg.tls.certresolver=mydnschallenge"
+      - "traefik.http.routers.wordpress-geb-mcp-msg.middlewares=middlewares-rate-limit@file,middlewares-secure-headers@file"
+      - "traefik.http.routers.wordpress-geb-mcp-http.rule=Host(`wordpress-geb-mcp.${DOMAIN}`) && PathPrefix(`/mcp`)"
+      - "traefik.http.routers.wordpress-geb-mcp-http.entrypoints=websecure"
+      - "traefik.http.routers.wordpress-geb-mcp-http.service=wordpress-geb-mcp-svc"
+      - "traefik.http.routers.wordpress-geb-mcp-http.tls=true"
+      - "traefik.http.routers.wordpress-geb-mcp-http.tls.certresolver=mydnschallenge"
+      - "traefik.http.routers.wordpress-geb-mcp-http.middlewares=middlewares-rate-limit@file,middlewares-secure-headers@file"
+      - "traefik.http.services.wordpress-geb-mcp-svc.loadbalancer.server.port=8000"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
