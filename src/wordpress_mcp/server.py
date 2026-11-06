@@ -6,9 +6,10 @@ import logging
 import os
 from typing import Any
 
-import mcp.server.stdio
+import jsonschema
 import mcp.types as types
-from mcp.server import Server
+from mcp.server import Server, ServerRequestContext
+from mcp.server.stdio import stdio_server
 
 _log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -18,33 +19,18 @@ logging.basicConfig(
 
 from .client import wp_request, wp_upload_media  # noqa: E402
 
-server = Server(
-    "wordpress-mcp",
-    instructions=(
-        "MCP-Server für WordPress (REST API v2).\n\n"
-        "Hinweise:\n"
-        "- Posts und Pages haben denselben Aufbau – nutze die passenden Tools je nach Inhaltstyp.\n"
-        "- SEO-Metadaten (Yoast/RankMath) werden über wp_update_seo_meta gesetzt.\n"
-        "- Medien-Upload: Dateiinhalt als base64 übergeben, ähnlich wie bei anderen Upload-Tools.\n"
-        "- Plugins/Themes abfragen erfordert Admin-Rechte im WordPress.\n"
-        "- Status-Werte für Posts/Pages: 'publish', 'draft', 'pending', 'private', 'trash'."
-    ),
-)
-
-
 # ---------------------------------------------------------------------------
 # Tool-Definitionen
 # ---------------------------------------------------------------------------
 
 
-@server.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
         # ── Posts ──────────────────────────────────────────────────────────
         types.Tool(
             name="wp_list_posts",
             description="Listet WordPress-Posts. Optional: Status, Suche, Kategorie, Tag, Anzahl, Seite.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "status": {"type": "string", "description": "publish|draft|pending|private|trash (Standard: publish)"},
@@ -61,7 +47,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_get_post",
             description="Ruft einen einzelnen WordPress-Post anhand seiner ID ab.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {"id": {"type": "integer"}},
                 "required": ["id"],
@@ -70,7 +56,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_create_post",
             description="Erstellt einen neuen WordPress-Post.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "title": {"type": "string"},
@@ -88,7 +74,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_update_post",
             description="Aktualisiert einen bestehenden WordPress-Post.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -107,7 +93,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_delete_post",
             description="Löscht einen WordPress-Post (in den Papierkorb oder endgültig).",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -120,7 +106,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_list_pages",
             description="Listet WordPress-Seiten.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "status": {"type": "string", "default": "publish"},
@@ -136,7 +122,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_get_page",
             description="Ruft eine einzelne WordPress-Seite anhand ihrer ID ab.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {"id": {"type": "integer"}},
                 "required": ["id"],
@@ -145,7 +131,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_create_page",
             description="Erstellt eine neue WordPress-Seite.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "title": {"type": "string"},
@@ -163,7 +149,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_update_page",
             description="Aktualisiert eine bestehende WordPress-Seite.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -182,7 +168,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_delete_page",
             description="Löscht eine WordPress-Seite.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -195,7 +181,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_list_categories",
             description="Listet alle WordPress-Kategorien.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "search": {"type": "string"},
@@ -207,7 +193,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_create_category",
             description="Erstellt eine neue WordPress-Kategorie.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
@@ -221,7 +207,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_update_category",
             description="Aktualisiert eine bestehende WordPress-Kategorie.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -236,7 +222,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_delete_category",
             description="Löscht eine WordPress-Kategorie.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -249,7 +235,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_list_tags",
             description="Listet alle WordPress-Tags.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "search": {"type": "string"},
@@ -261,7 +247,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_create_tag",
             description="Erstellt einen neuen WordPress-Tag.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
@@ -274,7 +260,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_update_tag",
             description="Aktualisiert einen bestehenden WordPress-Tag.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -288,7 +274,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_delete_tag",
             description="Löscht einen WordPress-Tag.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -301,7 +287,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_list_media",
             description="Listet Medien in der WordPress-Mediathek.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "search": {"type": "string"},
@@ -315,7 +301,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_upload_media",
             description="Lädt eine Datei in die WordPress-Mediathek hoch. Dateiinhalt als base64.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "filename": {"type": "string", "description": "Dateiname mit Erweiterung, z.B. 'bild.jpg'"},
@@ -330,7 +316,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_update_media",
             description="Aktualisiert Metadaten eines Medienelements (Titel, Alt-Text, Beschreibung).",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -345,7 +331,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_delete_media",
             description="Löscht ein Medienelement aus der WordPress-Mediathek.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
@@ -362,7 +348,7 @@ async def list_tools() -> list[types.Tool]:
                 "Unterstützt All in One SEO (AIOSEO), Yoast SEO und RankMath. "
                 "AIOSEO ist das aktive Plugin auf dieser WordPress-Installation."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer", "description": "Post- oder Seiten-ID"},
@@ -382,12 +368,12 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_get_site_info",
             description="Gibt allgemeine Informationen zur WordPress-Installation zurück (Name, URL, Beschreibung, Version).",
-            inputSchema={"type": "object", "properties": {}},
+            input_schema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="wp_list_plugins",
             description="Listet installierte WordPress-Plugins mit Status. Erfordert Admin-Rechte.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "status": {"type": "string", "description": "active|inactive (leer = alle)"},
@@ -397,7 +383,7 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="wp_list_themes",
             description="Listet installierte WordPress-Themes. Erfordert Admin-Rechte.",
-            inputSchema={"type": "object", "properties": {}},
+            input_schema={"type": "object", "properties": {}},
         ),
     ]
 
@@ -407,7 +393,6 @@ async def list_tools() -> list[types.Tool]:
 # ---------------------------------------------------------------------------
 
 
-@server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     try:
         result = await _dispatch(name, arguments)
@@ -599,13 +584,66 @@ async def _update_seo_meta(args: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+async def _on_list_tools(
+    ctx: ServerRequestContext, params: types.PaginatedRequestParams | None
+) -> types.ListToolsResult:
+    return types.ListToolsResult(tools=await list_tools())
+
+
+def _error_result(text: str) -> types.CallToolResult:
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text=text)], is_error=True
+    )
+
+
+async def _on_call_tool(
+    ctx: ServerRequestContext, params: types.CallToolRequestParams
+) -> types.CallToolResult:
+    """mcp 2.x prueft Argumente nicht mehr und wandelt Exceptions nicht mehr um."""
+    arguments = params.arguments or {}
+    tool = next((t for t in await list_tools() if t.name == params.name), None)
+    if tool is not None:
+        try:
+            jsonschema.validate(arguments, tool.input_schema)
+        except jsonschema.ValidationError as exc:
+            return _error_result(f"Input validation error: {exc.message}")
+    try:
+        content = await call_tool(params.name, arguments)
+    except Exception as exc:
+        return _error_result(str(exc))
+    return types.CallToolResult(content=content, is_error=False)
+
+
+server = Server(
+    "wordpress-mcp",
+    instructions=(
+        "MCP-Server für WordPress (REST API v2).\n\n"
+        "Hinweise:\n"
+        "- Posts und Pages haben denselben Aufbau – nutze die passenden Tools je nach Inhaltstyp.\n"
+        "- SEO-Metadaten (Yoast/RankMath) werden über wp_update_seo_meta gesetzt.\n"
+        "- Medien-Upload: Dateiinhalt als base64 übergeben, ähnlich wie bei anderen Upload-Tools.\n"
+        "- Plugins/Themes abfragen erfordert Admin-Rechte im WordPress.\n"
+        "- Status-Werte für Posts/Pages: 'publish', 'draft', 'pending', 'private', 'trash'."
+    ),
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
+
+
 def main() -> None:
     import asyncio
 
     if os.getenv("MCP_TRANSPORT", "stdio") == "sse":
         _run_sse()
     else:
-        asyncio.run(mcp.server.stdio.run_server(server))
+        asyncio.run(_run_stdio())
+
+
+async def _run_stdio() -> None:
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream, write_stream, server.create_initialization_options()
+        )
 
 
 def _run_sse() -> None:
@@ -714,7 +752,11 @@ def _run_sse() -> None:
         async def __call__(self, scope, receive, send):
             return
 
-    session_manager = StreamableHTTPSessionManager(app=server, json_response=True)
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=True,
+        max_request_body_size=32 * 1024 * 1024,
+    )
 
     async def handle_streamable_http(request: Request):
         ok, reason = await _is_authorized(request)
